@@ -8,7 +8,7 @@ import java.sql.Statement;
 
 public class MysqlDBConnection {
 	private final String driverClass = "com.mysql.jdbc.Driver";
-	private final String url="jdbc:mysql://123.57.229.6:3306/mysql";//数据库主机地址以及数据库名     
+	private final String url="jdbc:mysql://123.57.229.6:3306/test";//数据库主机地址以及数据库名     
 	private final String user="root";//MySQ帐号     
 	private final String password="ZHoiun89825";//MYSQL密码
 	//
@@ -50,6 +50,12 @@ public class MysqlDBConnection {
 		initDB();
 		
 		return stmt.executeQuery(sql);
+	}
+	
+	public boolean executeSql(String sql) throws SQLException{
+		initDB();
+		stmt.execute(sql);
+		return true;
 	}
 	
 	public static String testabc(){

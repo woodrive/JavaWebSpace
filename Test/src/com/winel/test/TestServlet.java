@@ -2,17 +2,22 @@ package com.winel.test;
 
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.security.NoSuchAlgorithmException;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.logging.Logger;
+import java.util.Arrays;
+import java.util.Map;
 
 import javax.servlet.ServletException;
 import javax.servlet.annotation.WebServlet;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+
+import org.apache.log4j.Logger;
 
 
 /**
@@ -21,7 +26,7 @@ import javax.servlet.http.HttpServletResponse;
 @WebServlet(description = "test", urlPatterns = { "/testServlet" })
 public class TestServlet extends HttpServlet {
 	
-	private Logger log = Logger.getLogger(TestServlet.class.getName());
+	private Logger log = Logger.getLogger(TestServlet.class);
 	private static final long serialVersionUID = 1L;
        
     /**
@@ -39,36 +44,37 @@ public class TestServlet extends HttpServlet {
 		// TODO Auto-generated method stub
 		synchronized (this){	
 			PrintWriter pwWriter = response.getWriter();
-			String driverClass="com.mysql.jdbc.Driver";  
-		    String url="jdbc:mysql://123.57.229.6:3306/mysql";//数据库主机地址以及数据库名     
-		    String user="root";//MySQ帐号     
-		    String password="ZHoiun89825";//MYSQL密码  
-		    Connection conn = null;
-		    try {
-		    	Class.forName(driverClass).newInstance();
-		    	conn = DriverManager.getConnection(url, user, password);
-		    	Statement stmt = conn.createStatement();
-		    	String sql = "select * from user";
-//		    	ResultSet rs = stmt.executeQuery(sql);
-		    	ResultSet rs = (new MysqlDBConnection()).queryForSet(sql);
-		    	while (rs.next()) {
-					String stemp = "";
-		    		stemp += rs.getString(1);
-		    		stemp += rs.getString(2);
-		    		stemp += rs.getString(3);
-		    		stemp += rs.getString(4);
-					pwWriter.println(stemp);
-				}
-			} catch (Exception e) {
-				// TODO: handle exception
-				e.printStackTrace();
-			} finally{
-				
+			String signString = request.getParameter("signature");
+			String timeString = request.getParameter("timestamp");
+			String nonceString = request.getParameter("nonce");
+			String echoString = request.getParameter("echostr");
+			String[] arr = new String[]{EncryptComm.getTOKEN_STRING(), timeString, nonceString};
+			Arrays.sort(arr);
+			StringBuilder sbuBuilder = new StringBuilder();
+			for(String temp: arr){
+				sbuBuilder.append(temp);
 			}
-			pwWriter.println("ni hao");
-			pwWriter.println(EncryptComm.GetAccessTokenStr());
+			String comparestr;
+			try {
+				comparestr = EncryptComm.SHA1Encrypt(sbuBuilder.toString());
+				if(signString.equals(comparestr)){
+					pwWriter.println(echoString);
+				}else{
+					pwWriter.println("Error!");
+				}
+			} catch (NoSuchAlgorithmException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
 			pwWriter.flush();
 			pwWriter.close();
+//			pwWriter.println("ni hao");
+//			try {
+//				pwWriter.println(EncryptComm.GetAccessTokenStr());
+//			} catch (SQLException e) {
+//				// TODO Auto-generated catch block
+//				e.printStackTrace();
+//			}
 		}
 	}
 
