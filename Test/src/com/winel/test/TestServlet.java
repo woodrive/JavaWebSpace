@@ -23,7 +23,9 @@ import org.apache.log4j.Logger;
 /**
  * Servlet implementation class TestServlet
  */
-@WebServlet(description = "test", urlPatterns = { "/testServlet" })
+@WebServlet(description = "test", 
+	urlPatterns = { "/testServlet",
+					"/gettoken"})
 public class TestServlet extends HttpServlet {
 	
 	private Logger log = Logger.getLogger(TestServlet.class);
@@ -44,37 +46,40 @@ public class TestServlet extends HttpServlet {
 		// TODO Auto-generated method stub
 		synchronized (this){	
 			PrintWriter pwWriter = response.getWriter();
-			String signString = request.getParameter("signature");
-			String timeString = request.getParameter("timestamp");
-			String nonceString = request.getParameter("nonce");
-			String echoString = request.getParameter("echostr");
-			String[] arr = new String[]{EncryptComm.getTOKEN_STRING(), timeString, nonceString};
-			Arrays.sort(arr);
-			StringBuilder sbuBuilder = new StringBuilder();
-			for(String temp: arr){
-				sbuBuilder.append(temp);
-			}
-			String comparestr;
-			try {
-				comparestr = EncryptComm.SHA1Encrypt(sbuBuilder.toString());
-				if(signString.equals(comparestr)){
-					pwWriter.println(echoString);
-				}else{
-					pwWriter.println("Error!");
+			//消息验证
+			if(request.getServletPath().equals("/testServlet")){
+				String signString = request.getParameter("signature");
+				String timeString = request.getParameter("timestamp");
+				String nonceString = request.getParameter("nonce");
+				String echoString = request.getParameter("echostr");
+				String[] arr = new String[]{EncryptComm.getTOKEN_STRING(), timeString, nonceString};
+				Arrays.sort(arr);
+				StringBuilder sbuBuilder = new StringBuilder();
+				for(String temp: arr){
+					sbuBuilder.append(temp);
 				}
-			} catch (NoSuchAlgorithmException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
+				String comparestr;
+				try {
+					comparestr = EncryptComm.SHA1Encrypt(sbuBuilder.toString());
+					if(signString.equals(comparestr)){
+						pwWriter.println(echoString);
+					}else{
+						pwWriter.println("Error!");
+					}
+				} catch (NoSuchAlgorithmException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}	
+			}else if(request.getServletPath().equals("/gettoken")){
+				try {
+					pwWriter.println(EncryptComm.GetAccessTokenStr());
+				} catch (SQLException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+			}			
 			pwWriter.flush();
 			pwWriter.close();
-//			pwWriter.println("ni hao");
-//			try {
-//				pwWriter.println(EncryptComm.GetAccessTokenStr());
-//			} catch (SQLException e) {
-//				// TODO Auto-generated catch block
-//				e.printStackTrace();
-//			}
 		}
 	}
 

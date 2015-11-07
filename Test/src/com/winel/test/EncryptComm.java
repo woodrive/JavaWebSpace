@@ -24,8 +24,11 @@ import javassist.bytecode.ConstantAttribute;
 public class EncryptComm {
 	
 	private final static String TOKEN_STRING = "wineltest"; 
-	private final static String appIdString = "wx716b446c61d5641c";
-	private final static String appSecretString = "b115cee7553d8b143afbc3a1116df96c";
+	//测试公众号
+	private final static String appIdString = "wxde92dc27d69b7312";
+	private final static String appSecretString = "d1bd2ba556604eb897c5fa8e4b76440d";
+//	private final static String appIdString = "wx716b446c61d5641c";
+//	private final static String appSecretString = "b115cee7553d8b143afbc3a1116df96c";
 	
 	
 	
