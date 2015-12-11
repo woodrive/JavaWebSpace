@@ -435,11 +435,49 @@ begin
   IsLPT := False;
   if sPrinter = 3 then
   begin
-    if Pos('LPT', Port) > 0 then
+    if P_PrintType = 'POSBANK' then
     begin
-      AssignFile(fp, PChar(Port));
-      Rewrite(fp);
-      IsLPT := True;
+      if Pos('LPT', Port) > 0 then
+      begin
+        AssignFile(fp, PChar(Port));
+        Rewrite(fp);
+        IsLPT := True;
+      end;
+      //PtImageRW.dll
+      PtImageRWHandle := LoadLibrary('PtImageRW.dll');
+      if PtImageRWHandle = 0 then
+      begin
+        ShowMessageBox('动态库PtImageRW.dll缺失或调用失败', '消息', MB_OK + MB_ICONINFORMATION);
+        Exit;
+      end
+      else
+      begin
+        @PtInitImage := GetProcAddress(PtImageRWHandle, 'PtInitImage');
+        @PtSaveImage := GetProcAddress(PtImageRWHandle, 'PtSaveImage');
+        @PtFreeImage := GetProcAddress(PtImageRWHandle, 'PtFreeImage');
+        if (@PtInitImage = nil) or (@PtSaveImage = nil) or (@PtFreeImage = nil) then
+        begin
+          ShowMessageBox('动态库函数缺失或调用失败', '消息', MB_OK + MB_ICONINFORMATION);
+          Exit;
+        end;
+      end;
+      //PtQREncode.dll
+      PtQREncodeHandle := LoadLibrary('PtQREncode.dll');
+      if PtQREncodeHandle = 0 then
+      begin
+        ShowMessageBox('动态库PtQREncode.dll缺失或调用失败', '消息', MB_OK + MB_ICONINFORMATION);
+        Exit;
+      end
+      else
+      begin
+        @PtQREncodeInit := GetProcAddress(PtQREncodeHandle, 'PtQREncodeInit');
+        @PtQREncode := GetProcAddress(PtQREncodeHandle, 'PtQREncode');
+        if (@PtQREncodeInit = nil) or (@PtQREncode = nil) then
+        begin
+          ShowMessageBox('动态库函数缺失或调用失败', '消息', MB_OK + MB_ICONINFORMATION);
+          Exit;
+        end;
+      end;
     end;
   end;
   //文件初始化
@@ -538,12 +576,20 @@ begin
   end
   else if sPrinter = 3 then
   begin
-    //Initialize printer     
-    //character set
     if IsPrintCom and PrintComm.OpenFlag then
     begin
-      PrintComm.PutStr(Char($1B) + Char($40));
-      PrintComm.PutStr(Char($1B) + Char($52) + Char($15));
+      if P_PrintType = 'POSBANK' then
+      begin          
+        //Initialize printer
+        //character set
+        PrintComm.PutStr(Char($1B) + Char($40));
+        PrintComm.PutStr(Char($1B) + Char($52) + Char($15));
+      end
+      else if P_PrintType = 'IBM4610' then
+      begin
+        //字符间距
+        PrintComm.PutStr(Char($1B) + Char($20) + Char($02) + Char($1B) + Char($52) + Char($04));
+      end;
     end
     else if IsLPT then
     begin
@@ -601,8 +647,15 @@ begin
             begin
               if IsPrintCom and PrintComm.OpenFlag then
               begin
-                PrintComm.PutStr(Char($1C) + Char($71) + Char($01) + BitMapToNVPrinterData(ImgStr));
-                PrintComm.PutStr(Char($1C) + Char($70) + Char($01) + Char($00));
+                if P_PrintType = 'POSBANK' then
+                begin
+                  PrintComm.PutStr(Char($1C) + Char($71) + Char($01) + BitMapToNVPrinterData(ImgStr));
+                  PrintComm.PutStr(Char($1C) + Char($70) + Char($01) + Char($00));
+                end
+                else if P_PrintType = 'IBM4610' then
+                begin
+                  PrintComm.PutStr(Char($1D) + Char($2F) + Char($02) + Char(StrToInt(KeyData) + 1));       //默认倍高倍宽
+                end;
               end
               else if IsLPT then
               begin
@@ -654,8 +707,15 @@ begin
             begin
               if IsPrintCom and PrintComm.OpenFlag then
               begin
-                PrintComm.PutStr(Char($1C) + Char($71) + Char($01) + BitMapToNVPrinterData(ImgStr));
-                PrintComm.PutStr(Char($1C) + Char($70) + Char($01) + Char($03));
+                if P_PrintType = 'POSBANK' then
+                begin
+                  PrintComm.PutStr(Char($1C) + Char($71) + Char($01) + BitMapToNVPrinterData(ImgStr));
+                  PrintComm.PutStr(Char($1C) + Char($70) + Char($01) + Char($03));
+                end
+                else if P_PrintType = 'IBM4610' then
+                begin
+                  PrintComm.PutStr(Char($1D) + Char($2F) + Char($02) + Char(StrToInt(KeyData) + 1));       //默认倍高倍宽
+                end;
               end
               else if IsLPT then
               begin
@@ -688,9 +748,18 @@ begin
         begin
           if IsPrintCom and PrintComm.OpenFlag then
           begin
-            PrintComm.PutStr(Char($1D) + Char($21) + Char($11));       //width + height hex put in third param
-            PrintComm.PutStr(KeyData);
-            PrintComm.PutStr(Char($1D) + Char($21) + Char($00));
+            if P_PrintType = 'POSBANK' then
+            begin
+              PrintComm.PutStr(Char($1D) + Char($21) + Char($11));       //width + height hex put in third param
+              PrintComm.PutStr(KeyData + Char(13) + Char(10));
+              PrintComm.PutStr(Char($1D) + Char($21) + Char($00));
+            end
+            else if P_PrintType = 'IBM4610' then
+            begin
+              PrintComm.PutStr(char($1b) + char($57) + char($01) + char($1b) + char($68) + char($01) + KeyData        //中文放大
+                              + char($1b) + char($57) + char($00) + char($1b) + char($68) + char($00));               //中文缩小
+              PrintComm.PutStr(char(10));
+            end;
           end
           else if IsLPT then
           begin
@@ -716,7 +785,7 @@ begin
           else if sPrinter = 3 then
           begin
             if IsPrintCom and PrintComm.OpenFlag then
-              PrintComm.PutStr(RePrint)
+              PrintComm.PutStr(RePrint + Char(13) + Char(10))
             else if IsLPT then
               Writeln(fp, RePrint);
           end;
@@ -755,11 +824,23 @@ begin
         begin
           if IsPrintCom and PrintComm.OpenFlag then
           begin
-            PrintComm.PutStr(Char($1D) + Char($6B) + Char(67) + Char(Length(KeyData)) + KeyData);
-            PrintComm.PutStr(' ');
+            if P_PrintType = 'POSBANK' then
+            begin
+              PrintComm.PutStr(Char($1D) + Char($77) + Char(2));           //EAN12 width
+              PrintComm.PutStr(Char($1D) + Char($68) + Char(75));          //EAN13 height
+              PrintComm.PutStr(Char($1D) + Char($6B) + Char(67) + Char(Length(KeyData)) + KeyData);
+              PrintComm.PutStr(' ' + Char(13) + Char(10));
+            end
+            else if P_PrintType = 'IBM4610' then
+            begin
+              PrintComm.PutStr(char($1d) + char($48) + char($02) + char($1d) + char($68) + char($40));
+              PrintComm.PutStr(char($1d) + char($77) + char($03) + char($1d) + char($6b) + char($02) + KeyData + char($00));
+            end;
           end
           else if IsLPT then
           begin
+            Writeln(fp, Char($1D) + Char($77) + Char(2));
+            Writeln(fp, Char($1D) + Char($68) + Char(75));
             Writeln(fp, Char($1D) + Char($6B) + Char(67) + Char(Length(KeyData)) + KeyData);
             Writeln(fp, ' ');
           end;
@@ -796,11 +877,23 @@ begin
         begin
           if IsPrintCom and PrintComm.OpenFlag then
           begin
-            PrintComm.PutStr(Char($1D) + Char($6B) + Char(73) + Char(Length(KeyData)) + KeyData);
-            PrintComm.PutStr(' ');
+            if P_PrintType = 'POSBANK' then
+            begin
+              PrintComm.PutStr(Char($1D) + Char($77) + Char(1));
+              PrintComm.PutStr(Char($1D) + Char($68) + Char(75));
+              PrintComm.PutStr(Char($1D) + Char($6B) + Char(73) + Char(Length(KeyData)) + KeyData);
+              PrintComm.PutStr(' ');
+            end
+            else if P_PrintType = 'IBM4610' then
+            begin
+              PrintComm.PutStr(char($1d) + char($48) + char($02) + char($1d) + char($68) + char($40));
+              PrintComm.PutStr(char($1d) + char($77) + char($02) + char($1d) + char($6b) + char($07) + KeyData + char($00));
+            end;
           end
           else if IsLPT then
-          begin
+          begin                                          
+            Writeln(fp, Char($1D) + Char($77) + Char(1));
+            Writeln(fp, Char($1D) + Char($68) + Char(75));
             Writeln(fp, Char($1D) + Char($6B) + Char(73) + Char(Length(KeyData)) + KeyData);
             Writeln(fp, ' ');
           end;
@@ -836,23 +929,26 @@ begin
         end
         else if sPrinter = 3 then
         begin
-          CreateQRCode(KeyData, PT_QR_VERSION_AUTO, PT_QR_ECCLEVEL_L, Floor(Length(KeyData) / 250) + 4);
-          if FileExists(g_path + 'QRCode.bmp') then
+          if P_PrintType = 'POSBANK' then
           begin
-            if IsPrintCom and PrintComm.OpenFlag then
+            CreateQRCode(KeyData, PT_QR_VERSION_AUTO, PT_QR_ECCLEVEL_L, Floor(Length(KeyData) / 250) + 4);
+            if FileExists(g_path + 'QRCode.bmp') then
             begin
-              PrintComm.PutStr(Char($1C) + Char($71) + Char($01) + BitMapToNVPrinterData(g_path + 'QRCode.bmp'));
-              PrintComm.PutStr(Char($1C) + Char($70) + Char($01) + Char($03));
-            end
-            else if IsLPT then
-            begin
-              Writeln(fp, Char($1C) + Char($71) + Char($01) + BitMapToNVPrinterData(g_path + 'QRCode.bmp'));
-              Writeln(fp, Char($1C) + Char($70) + Char($01) + Char($03));
+              if IsPrintCom and PrintComm.OpenFlag then
+              begin
+                PrintComm.PutStr(Char($1C) + Char($71) + Char($01) + BitMapToNVPrinterData(g_path + 'QRCode.bmp'));
+                PrintComm.PutStr(Char($1C) + Char($70) + Char($01) + Char(48));
+              end
+              else if IsLPT then
+              begin
+                Writeln(fp, Char($1C) + Char($71) + Char($01) + BitMapToNVPrinterData(g_path + 'QRCode.bmp'));
+                Writeln(fp, Char($1C) + Char($70) + Char($01) + Char(48));
+              end;
             end;
           end;
         end;
       end
-      else if (KeyStr = '[INTIME9901]') or ((RePrint <> '') and (temp = '[REPRINTFOOT]')) then
+      else if (KeyStr = '[INTIME9901]') or (Trim(KeyStr) = '[PAPERCUT]') or ((RePrint <> '') and (temp = '[REPRINTFOOT]')) then
       begin
         if sPrinter = 0 then
         begin
@@ -887,17 +983,26 @@ begin
         begin
           if IsPrintCom and PrintComm.OpenFlag then
           begin
-            for i := 1 to 4 do PrintComm.PutStr(Char($0A));
-            PrintComm.PutStr(Char($1B) + Char($69));
+            if P_PrintType = 'POSBANK' then
+            begin
+  //            for i := 1 to 4 do PrintComm.PutStr(Char($0A));
+  //            PrintComm.PutStr(Char($1B) + Char($6D));
+              PrintComm.PutStr(Char($1D) + Char($56) + Char(66) + Char(4));
+            end
+            else if P_PrintType = 'IBM4610' then
+            begin
+              for i := 1 to 4 do PrintComm.PutStr(Char(10));
+              PrintComm.PutStr(Char($1B) + Char($69));
+            end;
           end
           else if IsLPT then
           begin
             for i := 1 to 4 do PrintComm.PutStr(Char($0A));
-            Writeln(fp, Char($1B) + Char($69));
+            Writeln(fp, Char($1B) + Char($6D));
           end;
         end;
       end
-      else if (KeyStr = '[INTIME9902]') or ((RePrint <> '') and (temp = '[REPRINTFOOT]')) then
+      else if (KeyStr = '[INTIME9902]') or (Trim(KeyStr) = '[PAPERCUT]') or ((RePrint <> '') and (temp = '[REPRINTFOOT]')) then
       begin
         if sPrinter = 0 then
         begin
@@ -932,8 +1037,17 @@ begin
         begin
           if IsPrintCom and PrintComm.OpenFlag then
           begin
-            for i := 1 to 4 do PrintComm.PutStr(Char($0A));
-            PrintComm.PutStr(Char($1D) + Char($56) + Char($00));
+            if P_PrintType = 'POSBANK' then
+            begin
+  //            for i := 1 to 4 do PrintComm.PutStr(Char($0A));
+  //            PrintComm.PutStr(Char($1D) + Char($56) + Char($00));
+              PrintComm.PutStr(Char($1D) + Char($56) + Char(65) + Char(4));
+            end
+            else if P_PrintType = 'IBM4610' then
+            begin
+              for i := 1 to 4 do PrintComm.PutStr(Char(10));
+              PrintComm.PutStr(Char($1B) + Char($69));
+            end;
           end
           else if IsLPT then
           begin
@@ -965,7 +1079,16 @@ begin
         else if sPrinter = 3 then
         begin
           if IsPrintCom and PrintComm.OpenFlag then
-            PrintComm.PutStr(temp)
+          begin
+            if P_PrintType = 'POSBANK' then
+            begin
+              PrintComm.PutStr(temp + Char(13) + Char(10));
+            end
+            else if P_PrintType = 'IBM4610' then
+            begin
+              PrintComm.PutStr(temp + Char(10));
+            end;
+          end
           else if IsLPT then
             Writeln(fp, temp);
         end;
@@ -997,10 +1120,15 @@ begin
   end
   else if sPrinter = 3 then
   begin
-    if IsLPT then
+    if P_PrintType = 'POSBANK' then
     begin
-      Flush(fp);
-      CloseFile(fp);
+      if IsLPT then
+      begin
+        Flush(fp);
+        CloseFile(fp);
+      end;
+      FreeLibrary(PtImageRWHandle);
+      FreeLibrary(PtQREncodeHandle);
     end;
   end;
 end;

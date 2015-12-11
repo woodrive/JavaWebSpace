@@ -1582,7 +1582,7 @@ begin
   end;
 end;
 
-//银联通用
+//银联-通用
 
 function LoadPosInf: Boolean;
 var
@@ -1838,6 +1838,62 @@ end;
 procedure FreeRiComDll;
 begin
   FreeLibrary(RiComHandle);
+end;
+
+//上海杉德（北仑农行）
+function LoadESandDll: Boolean;
+var
+  BankDll: string;
+begin
+  Result := False;
+  if P_BankDLL = '' then
+    BankDll := 'LibSand.dll'
+  else
+    BankDll := P_BankDLL;
+  ESandHandle := LoadLibrary(PChar(BankDll));
+  if ESandHandle <> 0 then
+  begin
+    @ESandTrans := GetProcAddress(ESandHandle, 'card_trans');
+    if @ESandTrans <> nil then
+      Result := True
+    else
+      ShowMessageBox('初始化银联函数库失败,信用卡交易不能正常执行', '系统警告', MB_ICONWARNING);
+  end
+  else
+    ShowMessageBox('载入银联函数库失败,信用卡交易不能正常执行', '系统警告', MB_ICONWARNING);
+end;
+
+procedure FreeESandDll;
+begin
+  FreeLibrary(ESandHandle);
+end;
+
+//银联商务（苍南）
+function LoadUmsUnionDll: Boolean;
+var
+  BankDll: string;
+begin
+  Result := False;
+  if P_BankDLL = '' then
+    BankDll := 'umsDevTool_sp30.dll'
+  else
+    BankDll := P_BankDLL;
+  UmsHandle := LoadLibrary(PChar(BankDll));
+  if UmsHandle <> 0 then
+  begin
+    @UmsProTrans := GetProcAddress(UmsHandle, 'YLSW_PROTRANS');
+    if @UmsProTrans <> nil then
+      Result := True
+    else
+      ShowMessageBox('初始化银联函数库失败,信用卡交易不能正常执行', '系统警告', MB_ICONWARNING);
+  end
+  else
+    ShowMessageBox('载入银联函数库失败,信用卡交易不能正常执行', '系统警告', MB_ICONWARNING);
+end;
+
+procedure FreeUmsUnionDll;
+begin
+  FreeLibrary(UmsHandle);
 end;
 
 //MAINFUNC
@@ -2590,6 +2646,7 @@ function doNormal(mode: ShortInt; flag: String): Boolean;
   function doNormalRiCom(mode: ShortInt; flag: string): Boolean;
   var
     lResult,ires: Integer;
+    label LabelReprint;
   begin
     Result := False;
     res.Ok := 0;
@@ -2623,8 +2680,12 @@ function doNormal(mode: ShortInt; flag: String): Boolean;
             end;
           end;
         3: gRiComIn.transType := '06';
-        4, 5: gRiComIn.transType := 'ff';
+        4: goto LabelReprint;
+        5: gRiComIn.transType := 'ff';
       end;
+      //先删除toprint.txt
+      if FileExists(g_path + P_BankPaper) then
+        DeleteFile(PChar(g_path + P_BankPaper));
       ires := RiComMenuApp(PChar(@gRiComIn), PChar(@gRiComOut));
       if ires = 1 then
       begin
@@ -2633,19 +2694,26 @@ function doNormal(mode: ShortInt; flag: String): Boolean;
 
       if lResult = 0 then
       begin
-        res.Ok := 1;
-        StrToArray(res.RspCode, gRiComOut.respCode);                //应答码
-        StrToArray(res.Amount, gRiComOut.amount);                   //交易金额
-        StrToArray(res.Cardno, gRiComOut.cardno);                   //卡号
-        StrToArray(res.LandiType, gRiComIn.transType);              //交易类型
-        StrToArray(res.Invoice, gRiComOut.batchNo);                 //凭证号
-        StrToArray(res.Date, Copy(gRiComOut.operdate, 5, 4));       //交易日期
-        StrToArray(res.Time, gRiComOut.opertime);                   //交易时间
+        labelReprint:
+          begin
+            res.Ok := 1;
+            StrToArray(res.RspCode, gRiComOut.respCode);                //应答码
+            StrToArray(res.Amount, gRiComOut.amount);                   //交易金额
+            StrToArray(res.Cardno, gRiComOut.cardno);                   //卡号
+            StrToArray(res.LandiType, gRiComIn.transType);              //交易类型
+            StrToArray(res.Invoice, gRiComOut.batchNo);                 //凭证号
+            StrToArray(res.Date, Copy(gRiComOut.operdate, 5, 4));       //交易日期
+            StrToArray(res.Time, gRiComOut.opertime);                   //交易时间
 
-        StrToArray(gCard, gRiComOut.cardbank);                      //发卡行
-        StrToArray(gRefno, gRiComOut.index);                        //检索号
-        if mode = 4 then
-          PrintBankPaper(req, res, 1, 'Y');
+            StrToArray(gCard, gRiComOut.cardbank);                      //发卡行
+            StrToArray(gRefno, gRiComOut.index);                        //检索号
+
+            if mode = 4 then
+            begin
+              StrToArray(res.Amount, gRiComIn.amount);                   //交易金额
+              PrintBankPaper(req, res, 1, 'Y');
+            end;
+          end;
         Result := True;
       end
       else begin
@@ -2659,9 +2727,163 @@ function doNormal(mode: ShortInt; flag: String): Boolean;
     FreeRiComDll;
   end;
 
+  function doNormalESand(mode: ShortInt; flag: string): Boolean;
+  var
+    lResult: Integer;
+    label lblReprint;
+  begin
+    Result := False;
+    res.Ok := 0;
+
+    FillChar(gESandIn, SizeOf(gESandIn), ' ');
+    FillChar(gESandOut, SizeOf(gESandOut), ' ');
+    if LoadESandDll then
+    begin
+      lResult := -1;
+
+      if Trim(req.Amount) = '' then
+        StrToArray(gESandIn.Amount, '000000000000')
+      else
+        StrToArray(gESandIn.Amount, req.Amount);
+      Str2Array(gESandIn.CashRegNo, '000' + P_Syjh);
+      Str2Array(gESandIn.CasherNo, g_counter);
+      gESandIn.OperateType := 'A0';
+      gESandIn.CardType := '01';
+      case mode of
+        1: gESandIn.TransType := '30';
+        2:
+          begin
+            if flag = '8' then
+            begin
+              gESandIn.TransType := '50';
+              Str2Array(gESandIn.Reserved, Copy(gInvoice, 1, 16));
+            end
+            else begin
+              gESandIn.TransType := '40';
+              Str2Array(gESandIn.OriginTraceNo, Copy(gInvoice, 1, 6));
+            end;
+          end;
+        3: gESandIn.TransType := '80';
+        4: goto lblReprint;
+        5: gESandIn.TransType := '92';
+      end;
+      ESandTrans(StrToInt(Copy(P_CreditPort, 4, 1)), PChar(@gESandIn), PChar(@gESandOut));
+      if gESandOut.ResponseCode = '00' then lResult := 0;
+
+      if lResult = 0 then
+      begin
+        res.Ok := 1;
+        StrToArray(res.RspCode, gESandOut.ResponseCode);        //应答码
+        StrToArray(res.LandiType, gESandOut.TransType);         //交易类型
+        StrToArray(res.Amount, gESandOut.Amount);               //交易金额
+        StrToArray(res.Cardno, gESandOut.CardNo);               //卡号
+        StrToArray(res.BankCode, gESandOut.BankNo);             //银行号
+        StrToArray(res.Date, Copy(gESandOut.TransDate, 5, 4));  //交易日期
+        StrToArray(res.Time, gESandOut.TransTime);              //交易时间
+        StrToArray(res.Authno, gESandOut.Auth_Code);            //授权号
+        StrToArray(res.Batchno, gESandOut.SellteNum);           //批次号
+        StrToArray(res.Invoice, gESandOut.CashTraceNo);         //交易流水号
+
+        StrToArray(gExpdate, gESandOut.Exp_Date);               //有效日期
+        StrToArray(gRefno, gESandOut.SysRefNo);                 //参考号
+        StrToArray(gCard, gESandOut.BankNo);                    //银行代码
+        Result := True;
+      end
+      else begin
+        res.Ok := 0;
+        StrToArray(res.Errmsg, gESandOut.ResponseMsg);
+      end;
+      lblReprint:
+    end;
+    FreeESandDll;
+  end;
+
+  function doNormalUmsUnion(mode: ShortInt; flag: string): Boolean;
+  var
+    lResult, ires: Integer;
+    sTr: TStringList;
+  begin
+    Result := False;
+    res.Ok := 0;
+
+    FillChar(gUmsUnionIn, SizeOf(gUmsUnionIn), Char(0));
+    if LoadUmsUnionDll then
+    begin
+      lResult := -1;
+
+      if Trim(req.Amount) = '' then
+        gUmsUnionIn._Amt := '0.00'
+      else begin
+        StrToArray(gUmsUnionIn._Amt, Copy(req.Amount, 1, 10) + '.' + Copy(req.Amount, 11, 2));
+      end;
+      gUmsUnionIn._Channel := '01';
+      Str2Array(gUmsUnionIn._Mcht, '000000000000000');
+      Str2Array(gUmsUnionIn._Oper, P_Gh);
+      Str2Array(gUmsUnionIn._Serial, Days + P_Syjh + P_seqno);
+      case mode of
+        1: gUmsUnionIn._Type := '01';
+        2:
+          begin          
+            gUmsUnionIn._Type := '02';
+            if flag = '8' then
+            begin
+              Str2Array(gUmsUnionIn._Pserial, Copy(gInvoice, 1, 12));
+              Str2Array(gUmsUnionIn._BatchNo, Copy(gInvoice, 13, 8));
+            end
+            else begin
+              Str2Array(gUmsUnionIn._Pserial, Copy(gInvoice, 1, 6));
+              Str2Array(gUmsUnionIn._BatchNo, Copy(gInvoice, 7, 6));
+            end;
+          end;
+        3, 4, 5:  gUmsUnionIn._Type := '03';
+      end;
+      ires := UmsProTrans(PChar(@(gUmsUnionIn._Channel)), PChar(@(gUmsUnionIn._Type)),
+          PChar(@(gUmsUnionIn._Amt)), PChar(@(gUmsUnionIn._Mcht)), PChar(@(gUmsUnionIn._Oper)),
+          PChar(@(gUmsUnionIn._BatchNo)), PChar(@(gUmsUnionIn._Pserial)), PChar(@(gUmsUnionIn._CardInfo)),
+          PChar(@(gUmsUnionIn._CardNum)), PChar(@(gUmsUnionIn._Serial)), PChar(@(gUmsUnionIn._RetInfo)));
+      if ires = 0 then
+      begin
+        lResult := 0;
+      end;
+
+      if lResult = 0 then
+      begin
+        res.Ok := 1;
+        if mode in [1, 2] then       //消费、撤销
+        begin
+          sTr := SplitString(PChar(@(gUmsUnionIn._RetInfo)), '|');
+          StrToArray(res.Amount, sTr[2]);
+          StrToArray(res.LandiType, sTr[1]);
+          StrToArray(res.RspCode, '00');
+          StrToArray(res.Invoice, sTr[4]);
+          StrToArray(res.Batchno, sTr[3]);
+          StrToArray(res.Cardno, sTr[9]);
+          StrToArray(res.Date, Copy(sTr[11], 5, 4));
+          StrToArray(res.Time, Copy(sTr[11], 9, 6));
+          StrToArray(res.Authno, sTr[12]);
+          StrToArray(res.BankCode, sTr[8]);
+
+          StrToArray(gCard, sTr[8]);
+          StrToArray(gRefno, sTr[10]);
+          StrToArray(gBankMemo, sTr[17]);
+        end;
+        Result := True;
+      end
+      else begin
+        res.Ok := 0;
+        StrToArray(res.Errmsg, gUmsUnionIn._RetInfo);
+      end;
+    end;
+    FreeUmsUnionDll;
+  end;
+
 begin
-  if P_BankType = '10' then
-    result := doNormalLandi(mode, flag) //银联浙江（联迪、百富）
+  if P_BankType = '3' then
+    Result := doNormalUmsUnion(mode, flag)     //银联商务
+  else if P_BankType = '7' then
+    Result := doNormalESand(mode, flag)  //上海杉德（北仑农行）
+  else if P_BankType = '10' then
+    result := doNormalLandi(mode, flag) //银泰-通用（联迪、百富）
   else if P_BankType = '11' then
     result := doNormalHZBank(mode, flag)  //杭州银行
   else if P_BankType = '12' then
@@ -2677,7 +2899,7 @@ begin
   else if P_BankType = '20' then
     Result := doNormalEChase(mode, flag)  //福建创识（绍兴农行）
   else if P_BankType = '21' then
-    result := doNormalEmv(mode, flag) //银联通用（DLL）
+    result := doNormalEmv(mode, flag) //银联-通用（DLL）
   else if P_BankType = '22' then
     result := doNormalYS(mode, flag) //南京银石（温岭农行、临海农行、成都建行）
   else
